@@ -16,23 +16,38 @@ def get_credentials_file():
     return os.path.expanduser(os.getenv('AWS_SHARED_CREDENTIALS_FILE', '~/.aws/credentials'))
 
 def backup_credentials(credentials_file):
+    """
+    Backup the current credentials file with a .bkp extension
+    """
     copyfile(credentials_file, '{}.bkp'.format(credentials_file))
     print('Backup file created - {}.bkp'.format(credentials_file))
 
 def get_credentials_list(credentials_file):
+    """
+    Return the credentials file as a configparser object
+    """
     credentials = ConfigParser()
     if credentials_file not in credentials.read(credentials_file):
         raise ConfigException('Unable to read AWS credentials file.')
     return credentials
 
 def get_current_credentials(credentials_list, aws_profile):
+    """
+    Get the current Access Key
+    """
     return credentials_list[aws_profile]['aws_access_key_id']
 
 def secure_key(key):
+    """
+    Hide part of key while printing it out on screen
+    """
     secured_key = '*****{}'.format(key[-5:])
     return secured_key
 
 def create_new_keys(aws_profile):
+    """
+    Create a new pair of AWS keys
+    """
     session = boto3.session.Session(profile_name=aws_profile)
     iam = session.client('iam')
     new_keys = iam.create_access_key()['AccessKey']
@@ -43,11 +58,17 @@ def create_new_keys(aws_profile):
     }
 
 def write_new_keys(credentials_list, credentials_file):
+    """
+    Write the AWS credentials config file
+    """
     with open(credentials_file, 'w') as aws_credentials_file:
         credentials_list.write(aws_credentials_file)
     return True
 
 def delete_old_key(aws_profile, old_access_key):
+    """
+    Delete the old access key from IAM. Retries 3 times, due the time required for AWS to let use new key.
+    """
     attempt = 0
     while True:
         attempt += 1
@@ -64,6 +85,9 @@ def delete_old_key(aws_profile, old_access_key):
     return True
 
 def parse_args(prog='aws-rotate',formatter_class=argparse.ArgumentDefaultsHelpFormatter):
+    """
+    Check whether profile name is given
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--profile", help="Specify the AWS profile with --profile arg.", default=None)
     args = parser.parse_args()
