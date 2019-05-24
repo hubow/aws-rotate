@@ -2,6 +2,7 @@
 
 """
 Script to make the rotation of AWS Access and Secret Keys easier.
+It doesn't validate number of existing IAM keys.
 """
 
 import os
@@ -9,6 +10,7 @@ import boto3
 import argparse
 from configparser import ConfigParser
 from shutil import copyfile
+import time
 
 def get_credentials_file():
     return os.path.expanduser(os.getenv('AWS_SHARED_CREDENTIALS_FILE', '~/.aws/credentials'))
@@ -26,25 +28,39 @@ def get_credentials_list(credentials_file):
 def get_current_credentials(credentials_list, aws_profile):
     return credentials_list[aws_profile]['aws_access_key_id']
 
+def secure_key(key):
+    secured_key = '*****{}'.format(key[-5:])
+    return secured_key
+
 def create_new_keys(aws_profile):
     session = boto3.session.Session(profile_name=aws_profile)
     iam = session.client('iam')
     new_keys = iam.create_access_key()['AccessKey']
+    print('[{}] New key created ({})'.format(aws_profile, secure_key(new_keys['AccessKeyId'])))
     return {
         'AccessKeyId': new_keys['AccessKeyId'], 
         'SecretAccessKey': new_keys['SecretAccessKey']
     }
 
-def write_new_credentials(credentials_list, credentials_file):
+def write_new_keys(credentials_list, credentials_file):
     with open(credentials_file, 'w') as aws_credentials_file:
         credentials_list.write(aws_credentials_file)
     return True
 
 def delete_old_key(aws_profile, old_access_key):
-    session = boto3.session.Session(profile_name=aws_profile)
-    iam = session.client('iam')
-    iam.delete_access_key(AccessKeyId=old_access_key)
-    print('Old AWS Access Key was deleted from IAM')
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            session = boto3.session.Session(profile_name=aws_profile)
+            iam = session.client('iam')
+            iam.delete_access_key(AccessKeyId=old_access_key)
+            print('[{}] Old key was deleted from IAM ({})'.format(aws_profile, secure_key(old_access_key)))
+            break
+        except:
+            if attempt > 3:
+                break
+        time.sleep(10)
     return True
 
 def parse_args(prog='aws-rotate',formatter_class=argparse.ArgumentDefaultsHelpFormatter):
@@ -59,10 +75,10 @@ def rotate_keys():
     backup_credentials(credentials_file)
     credentials_list = get_credentials_list(credentials_file)
     current_access_key = get_current_credentials(credentials_list, aws_profile)
-    new_access_key = create_new_keys(aws_profile)
-    credentials_list.set(aws_profile, 'aws_access_key_id', new_access_key['AccessKeyId'])
-    credentials_list.set(aws_profile, 'aws_secret_access_key', new_access_key['SecretAccessKey'])
-    write_new_credentials(credentials_list, credentials_file)
+    new_keys = create_new_keys(aws_profile)
+    credentials_list.set(aws_profile, 'aws_access_key_id', new_keys['AccessKeyId'])
+    credentials_list.set(aws_profile, 'aws_secret_access_key', new_keys['SecretAccessKey'])
+    write_new_keys(credentials_list, credentials_file)
     delete_old_key(aws_profile, current_access_key)
 
 if __name__ == '__main__':
